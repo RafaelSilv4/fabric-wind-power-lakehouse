@@ -1,0 +1,60 @@
+-- ============================================================
+-- Project: Wind Power Analytics
+-- Process: Bronze to Silver transformation
+-- Engine: Spark SQL - Microsoft Fabric
+-- ============================================================
+
+-- 1. Create a temporary view from the Bronze Lakehouse table
+CREATE OR REPLACE TEMPORARY VIEW bronze_wind_power AS
+SELECT *
+FROM WINDPOWER_ANALYTICS.LH_Wind_Power_bronze.dbo.wind_power;
+
+
+-- 2. Apply transformations and create the Silver temporary view
+CREATE OR REPLACE TEMPORARY VIEW transformed_wind_power AS
+SELECT
+    production_id,
+    date,
+    turbine_name,
+    capacity,
+    location_name,
+    latitude,
+    longitude,
+    region,
+    status,
+    responsible_department,
+    wind_direction,
+    ROUND(wind_speed, 2) AS wind_speed,
+    ROUND(energy_produced, 2) AS energy_produced,
+    DAY(date) AS day,
+    MONTH(date) AS month,
+    QUARTER(date) AS quarter,
+    YEAR(date) AS year,
+    REGEXP_REPLACE(time, '-', ':') AS time,
+    CAST(SUBSTRING(time, 1, 2) AS INT) AS hour_of_day,
+    CAST(SUBSTRING(time, 4, 2) AS INT) AS minute_of_hour,
+    CAST(SUBSTRING(time, 7, 2) AS INT) AS second_of_minute,
+    CASE
+        WHEN CAST(SUBSTRING(time, 1, 2) AS INT) BETWEEN 5 AND 11
+            THEN 'Morning'
+        WHEN CAST(SUBSTRING(time, 1, 2) AS INT) BETWEEN 12 AND 17
+            THEN 'Afternoon'
+        WHEN CAST(SUBSTRING(time, 1, 2) AS INT) BETWEEN 18 AND 23
+            THEN 'Evening'
+        ELSE 'Night'
+    END AS time_period
+FROM bronze_wind_power;
+
+
+-- 3. Recreate the Silver table
+DROP TABLE IF EXISTS
+    WINDPOWER_ANALYTICS.LH_wind_power_silver.dbo.wind_power;
+
+
+-- 4. Load the transformed data into the Silver Lakehouse
+CREATE TABLE
+    WINDPOWER_ANALYTICS.LH_wind_power_silver.dbo.wind_power
+USING DELTA
+AS
+SELECT *
+FROM transformed_wind_power;
